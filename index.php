@@ -1,270 +1,66 @@
 <?php
 
-session_start();
-
 require_once __DIR__ . '/bootstrap.php';
 
-use App\PriceEntry;
-use Random\RandomException;
+use FastRoute\RouteCollector;
+use Twig\Environment;
+use Twig\Loader\FilesystemLoader;
 
-// Validate input length
-const MAX_INPUT_LENGTH = 10000;
+// Setup Twig
+$loader = new FilesystemLoader(__DIR__ . '/src/Views');
+$twig = new Environment($loader, [
+    'cache' => false, // Disable cache for development
+    'autoescape' => 'html',
+]);
 
-// Generate CSRF token
-if (!isset($_SESSION['csrf_token'])) {
-    try {
-        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-    } catch (RandomException $e) {
+// Setup FastRoute
+$dispatcher = FastRoute\simpleDispatcher(require __DIR__ . '/routes.php');
 
-    }
+// Get HTTP method and URI
+$httpMethod = $_SERVER['REQUEST_METHOD'];
+$uri = $_SERVER['REQUEST_URI'];
+
+// Strip query string and decode URI
+if (false !== $pos = strpos($uri, '?')) {
+    $uri = substr($uri, 0, $pos);
+}
+$uri = rawurldecode($uri);
+
+// Auto-detect base path from script location
+$scriptName = dirname($_SERVER['SCRIPT_NAME']);
+$basePath = $scriptName === '/' ? '' : $scriptName;
+
+// Remove base path from URI
+if ($basePath !== '' && strpos($uri, $basePath) === 0) {
+    $uri = substr($uri, strlen($basePath));
 }
 
-// Handle form submission
-$message = '';
-$entries = [];
-
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // Validate CSRF token
-    if (!isset($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])) {
-        http_response_code(403);
-        die('CSRF validation failed');
-    }
-
-    if (isset($_POST['price_data'])) {
-        $priceData = trim($_POST['price_data']);
-
-        // basic validation
-        if (strlen($priceData) > MAX_INPUT_LENGTH) {
-            $message = 'Error: Input exceeds maximum length of ' . number_format(MAX_INPUT_LENGTH) . ' characters.';
-        } elseif (!empty($priceData)) {
-            require_once __DIR__ . '/process.php';
-            $message = processAndStorePriceData($priceData);
-        }
-    }
+// Ensure URI starts with /
+if (empty($uri) || $uri[0] !== '/') {
+    $uri = '/' . $uri;
 }
 
-// fetch and list all
-$entries = PriceEntry::orderBy('created_at', 'desc')->get();
+// Dispatch route
+$routeInfo = $dispatcher->dispatch($httpMethod, $uri);
 
-?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Food Price Comparison</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
 
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            padding: 2rem;
-        }
+switch ($routeInfo[0]) {
+    case FastRoute\Dispatcher::NOT_FOUND:
+        http_response_code(404);
+        echo '404 Not Found';
+        break;
 
-        .container {
-            max-width: 900px;
-            margin: 0 auto;
-        }
+    case FastRoute\Dispatcher::METHOD_NOT_ALLOWED:
+        http_response_code(405);
+        echo '405 Method Not Allowed';
+        break;
 
-        .card {
-            background: white;
-            border-radius: 16px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-            padding: 2.5rem;
-            margin-bottom: 2rem;
-        }
+    case FastRoute\Dispatcher::FOUND:
+        [$controller, $method] = $routeInfo[1];
+        $vars = $routeInfo[2];
 
-        h1 {
-            color: #2d3748;
-            margin-bottom: 0.5rem;
-            font-size: 2rem;
-        }
-
-        .subtitle {
-            color: #718096;
-            margin-bottom: 2rem;
-        }
-
-        textarea {
-            width: 100%;
-            min-height: 150px;
-            padding: 1rem;
-            border: 2px solid #e2e8f0;
-            border-radius: 8px;
-            font-size: 1rem;
-            font-family: inherit;
-            resize: vertical;
-            transition: border-color 0.2s;
-        }
-
-        textarea:focus {
-            outline: none;
-            border-color: #667eea;
-        }
-
-        .form-hint {
-            font-size: 0.875rem;
-            color: #718096;
-            margin-top: 0.5rem;
-            margin-bottom: 1rem;
-        }
-
-        button {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border: none;
-            padding: 1rem 2rem;
-            border-radius: 8px;
-            font-size: 1rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: transform 0.2s, box-shadow 0.2s;
-        }
-
-        button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 25px rgba(102, 126, 234, 0.4);
-        }
-
-        button:active {
-            transform: translateY(0);
-        }
-
-        .message {
-            padding: 1rem;
-            border-radius: 8px;
-            margin-bottom: 1rem;
-            background: #48bb78;
-            color: white;
-        }
-
-        .results h2 {
-            color: #2d3748;
-            margin-bottom: 1.5rem;
-            font-size: 1.5rem;
-        }
-
-        .results-grid {
-            display: grid;
-            gap: 1rem;
-        }
-
-        .result-item {
-            padding: 1.25rem;
-            border: 2px solid #e2e8f0;
-            border-radius: 8px;
-            transition: border-color 0.2s, transform 0.2s;
-        }
-
-        .result-item:hover {
-            border-color: #667eea;
-            transform: translateX(4px);
-        }
-
-        .result-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: start;
-            margin-bottom: 0.75rem;
-        }
-
-        .product-name {
-            font-weight: 600;
-            color: #2d3748;
-            font-size: 1.125rem;
-        }
-
-        .price {
-            font-weight: 700;
-            color: #667eea;
-            font-size: 1.5rem;
-        }
-
-        .unit {
-            color: #718096;
-            font-size: 0.875rem;
-            margin-left: 0.25rem;
-        }
-
-        .original-text {
-            color: #a0aec0;
-            font-size: 0.875rem;
-            font-style: italic;
-        }
-
-        .date {
-            color: #cbd5e0;
-            font-size: 0.75rem;
-            margin-top: 0.5rem;
-        }
-
-        .empty-state {
-            text-align: center;
-            padding: 3rem;
-            color: #a0aec0;
-        }
-    </style>
-</head>
-<body>
-<div class="container">
-    <div class="card">
-        <h1>Food Price Comparison</h1>
-        <p class="subtitle">Paste your food items and prices to compare</p>
-
-        <?php if ($message): ?>
-            <div class="message"><?= htmlspecialchars($message) ?></div>
-        <?php endif; ?>
-
-        <form method="POST">
-            <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
-                <textarea
-                        name="price_data"
-                        placeholder="Example:&#10;Apples 2.99&#10;Milk 1.50 per liter&#10;Bread 2.20&#10;Chicken breast 8.99 per kg"
-                        maxlength="<?= MAX_INPUT_LENGTH ?>"
-                        required
-                ></textarea>
-            <div class="form-hint">
-                Enter each product on a new line with its price. Prices assumed in € and per kg if no unit specified.
-                (e.g., "Tomatoes 3.50" or "Eggs 4.99 per dozen")
-            </div>
-            <button type="submit">Compare Pricing</button>
-        </form>
-    </div>
-
-    <?php if (count($entries) > 0): ?>
-        <div class="card results">
-            <h2>Price Comparison Results</h2>
-            <div class="results-grid">
-                <?php foreach ($entries as $entry): ?>
-                    <div class="result-item">
-                        <div class="result-header">
-                            <div class="product-name"><?= htmlspecialchars($entry->product_name) ?></div>
-                            <div>
-                                <span class="price">€<?= number_format($entry->price, 2) ?></span>
-                                <?php if ($entry->unit): ?>
-                                    <span class="unit"><?= htmlspecialchars($entry->unit) ?></span>
-                                <?php endif; ?>
-                            </div>
-                        </div>
-                        <div class="original-text">"<?= htmlspecialchars($entry->original_text) ?>"</div>
-                        <div class="date"><?= $entry->created_at->diffForHumans() ?></div>
-                    </div>
-                <?php endforeach; ?>
-            </div>
-        </div>
-    <?php else: ?>
-        <div class="card">
-            <div class="empty-state">
-                <p>No price entries yet. Add your first comparison above!</p>
-            </div>
-        </div>
-    <?php endif; ?>
-</div>
-</body>
-</html>
+        // Instantiate controller and call method
+        $controllerInstance = new $controller($twig, $basePath);
+        $controllerInstance->$method(...array_values($vars));
+        break;
+}
