@@ -222,7 +222,7 @@ $entries = PriceEntry::orderBy('created_at', 'desc')->get();
         <?php endif; ?>
 
         <form method="POST">
-            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
+            <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
                 <textarea
                         name="price_data"
                         placeholder="Example:&#10;Apples 2.99&#10;Milk 1.50 per liter&#10;Bread 2.20&#10;Chicken breast 8.99 per kg"
