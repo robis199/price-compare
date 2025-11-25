@@ -72,7 +72,7 @@ class PriceParser
 
             return [
                 'product' => $product,
-                'price' => (float)str_replace(',', '.', $matches[2]),
+                'price' => (float) str_replace(',', '.', $matches[2]),
                 'unit' => !empty(trim($matches[3])) ? trim($matches[3]) : null
             ];
         }

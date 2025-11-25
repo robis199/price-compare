@@ -247,7 +247,9 @@ $entries = PriceEntry::orderBy('created_at', 'desc')->get();
                             <div class="product-name"><?= htmlspecialchars($entry->product_name) ?></div>
                             <div>
                                 <span class="price">€<?= number_format($entry->price, 2) ?></span>
-                                <span class="unit"><?= htmlspecialchars($entry->unit ?: '/kg') ?></span>
+                                <?php if ($entry->unit): ?>
+                                    <span class="unit"><?= htmlspecialchars($entry->unit) ?></span>
+                                <?php endif; ?>
                             </div>
                         </div>
                         <div class="original-text">"<?= htmlspecialchars($entry->original_text) ?>"</div>
