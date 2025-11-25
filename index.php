@@ -1,19 +1,45 @@
 <?php
 
+session_start();
+
 require_once __DIR__ . '/bootstrap.php';
 
 use App\PriceEntry;
+use Random\RandomException;
+
+// Validate input length
+const MAX_INPUT_LENGTH = 10000;
+
+// Generate CSRF token
+if (!isset($_SESSION['csrf_token'])) {
+    try {
+        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+    } catch (RandomException $e) {
+
+    }
+}
 
 // Handle form submission
 $message = '';
 $entries = [];
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['price_data'])) {
-    $priceData = trim($_POST['price_data']);
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    // Validate CSRF token
+    if (!isset($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])) {
+        http_response_code(403);
+        die('CSRF validation failed');
+    }
 
-    if (!empty($priceData)) {
-        require_once __DIR__ . '/process.php';
-        $message = processAndStorePriceData($priceData);
+    if (isset($_POST['price_data'])) {
+        $priceData = trim($_POST['price_data']);
+
+        // basic validation
+        if (strlen($priceData) > MAX_INPUT_LENGTH) {
+            $message = 'Error: Input exceeds maximum length of ' . number_format(MAX_INPUT_LENGTH) . ' characters.';
+        } elseif (!empty($priceData)) {
+            require_once __DIR__ . '/process.php';
+            $message = processAndStorePriceData($priceData);
+        }
     }
 }
 
@@ -196,9 +222,11 @@ $entries = PriceEntry::orderBy('created_at', 'desc')->get();
         <?php endif; ?>
 
         <form method="POST">
+            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
                 <textarea
                         name="price_data"
                         placeholder="Example:&#10;Apples 2.99&#10;Milk 1.50 per liter&#10;Bread 2.20&#10;Chicken breast 8.99 per kg"
+                        maxlength="<?= MAX_INPUT_LENGTH ?>"
                         required
                 ></textarea>
             <div class="form-hint">
