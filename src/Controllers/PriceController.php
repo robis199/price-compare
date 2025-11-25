@@ -20,7 +20,10 @@ class PriceController
         $this->startSession();
         $this->generateCsrfToken();
 
-        $message = '';
+        // Get flash message from session and clear it
+        $message = $_SESSION['flash_message'] ?? '';
+        unset($_SESSION['flash_message']);
+
         $entries = PriceEntry::orderBy('created_at', 'desc')->get();
 
         echo $this->twig->render('prices/index.twig', [
@@ -55,14 +58,10 @@ class PriceController
             }
         }
 
-        $entries = PriceEntry::orderBy('created_at', 'desc')->get();
-
-        echo $this->twig->render('prices/index.twig', [
-            'message' => $message,
-            'entries' => $entries,
-            'csrf_token' => $_SESSION['csrf_token'],
-            'base_path' => $this->basePath
-        ]);
+        // Store message in session and redirect (Post/Redirect/Get pattern)
+        $_SESSION['flash_message'] = $message;
+        header('Location: ' . $this->basePath . '/');
+        exit;
     }
 
     private function startSession(): void
